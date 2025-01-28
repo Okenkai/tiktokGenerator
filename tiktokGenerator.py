@@ -19,24 +19,24 @@ def text_to_audio(text, output_audio_path):
 def generate_subtitles(text, audio_duration):
     try:
         words = text.split()
-        words_per_second = len(words) / audio_duration  # Calcule le nombre de mots par seconde
+        duration_per_word = audio_duration / len(words)
         subtitles = []
         current_time = 0
         line = []
         for word in words:
             line.append(word)
-            if len(line) >= words_per_second * 2:  # Ajuste la durée par ligne
+            if len(line) >= 8:  # Ajuster le nombre de mots par ligne
                 subtitles.append({
                     "start": current_time,
-                    "end": current_time + 2,  # Affiche chaque ligne pendant 2 secondes
+                    "end": current_time + len(line) * duration_per_word,
                     "text": " ".join(line)
                 })
-                current_time += 2
+                current_time += len(line) * duration_per_word
                 line = []
         if line:  # Ajouter les mots restants
             subtitles.append({
                 "start": current_time,
-                "end": current_time + 2,
+                "end": current_time + len(line) * duration_per_word,
                 "text": " ".join(line)
             })
         print("Sous-titres générés avec succès.")
@@ -49,11 +49,13 @@ def generate_subtitles(text, audio_duration):
 def combine_audio_video_with_subtitles(audio_path, video_path, output_path, subtitles):
     try:
         print("Chargement de la vidéo et de l'audio...")
-        video = VideoFileClip(video_path).subclip(0, 61)  # Limite la vidéo à 1:01
-        audio = AudioFileClip(audio_path).subclip(0, video.duration)
-        video = video.set_audio(audio)
-
-        # Ajouter les sous-titres
+        video = VideoFileClip(video_path).resize(height=720).subclip(0, 61)
+        audio = AudioFileClip(audio_path).subclip(0, 61)
+        video = video.set_audio(audio)  # Associe l'audio à la vidéo
+        
+        test_video = video.set_audio(audio)
+        test_video.write_videofile("test_output.mp4", codec="libx264", audio_codec="aac")
+        
         print("Ajout des sous-titres...")
         subtitle_clips = []
         for subtitle in subtitles:
@@ -61,20 +63,28 @@ def combine_audio_video_with_subtitles(audio_path, video_path, output_path, subt
                 subtitle["text"],
                 fontsize=24,
                 color='white',
-                size=video.size,
+                size=(video.w * 0.8, None),
                 method='caption',
                 bg_color='black'
             ).set_position(('center', 'bottom')).set_start(subtitle["start"]).set_duration(subtitle["end"] - subtitle["start"])
-            txt_clip = txt_clip.set_fps(video.fps).resize(video.size)  # Ajuste la résolution et le FPS
             subtitle_clips.append(txt_clip)
 
-        # Superposer les sous-titres sur la vidéo
         print("Combinaison finale des clips...")
-        final_video = CompositeVideoClip([video] + subtitle_clips)
-        final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", preset="ultrafast", bitrate="5000k")
+        final_video = CompositeVideoClip([video] + subtitle_clips).subclip(0, 61)
+        final_video.write_videofile(
+            output_path,
+            codec="libx264",
+            audio_codec="aac",
+            preset="ultrafast",
+            threads=4,
+            bitrate="5000k",
+            temp_audiofile="temp-audio.m4a",
+            remove_temp=True
+        )
         print(f"Vidéo finale générée avec succès : {output_path}")
     except Exception as e:
         print(f"Erreur lors de la combinaison audio/vidéo : {e}")
+
 
 # Exemple d'utilisation
 if __name__ == "__main__":
